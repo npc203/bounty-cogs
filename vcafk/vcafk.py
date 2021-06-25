@@ -9,6 +9,7 @@ from typing import Union
 from redbot.core.utils.chat_formatting import humanize_timedelta
 import re
 
+
 class VcAfk(commands.Cog):
     """
     Kicks people from VC if AFK
@@ -62,9 +63,7 @@ class VcAfk(commands.Cog):
 
         txt_channel = self.bot.get_channel(things["call_channel"])
         await txt_channel.send(
-            (await self.config.msg()).format(
-                user=member, timeout=things["timeout"]
-            )
+            (await self.config.msg()).format(user=member, timeout=things["timeout"])
         )
         try:
             await self.bot.wait_for(
@@ -79,9 +78,14 @@ class VcAfk(commands.Cog):
                 await vc_channel.guild.get_member(uid).move_to(
                     None, reason="Kicked for being AFK in VC"
                 )
-                await txt_channel.send(f"No response from {member.mention} , kicking from VC",allowed_mentions=discord.AllowedMentions.none())
+                await txt_channel.send(
+                    f"No response from {member.mention} , kicking from VC",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
             except discord.Forbidden:
-                await txt_channel.send(f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions")
+                await txt_channel.send(
+                    f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions"
+                )
                 self.active_users[uid] = [vc_channel, time.time()]
 
     @tasks.loop(seconds=10)
@@ -194,31 +198,39 @@ class VcAfk(commands.Cog):
                 await ctx.send("Invalid choice: Either choose `false` or `A Text channel`")
 
     @vcafk.command()
-    async def afktime(self, ctx, *,time_str: str):
+    async def afktime(self, ctx, *, time_str: str):
         """How long the bot waits before asking if user is afk
-        Example: 
+        Example:
         `[p]vcafk afktime 1h 30m 2s`
         `[p]vcafk afktime 39m 1s`
         """
         time_in_seconds = self.convert_time(time_str)
+        if not time_in_seconds:
+            return await ctx.send_help()
         if time_in_seconds < 30:
             return await ctx.send("Minimum afktime is 30 seconds")
         await self.config.guild_from_id(ctx.guild.id).resptime.set(time_in_seconds)
-        await ctx.send(f"Sucessfully set the afk time to {humanize_timedelta(seconds=time_in_seconds)}")
+        await ctx.send(
+            f"Sucessfully set the afk time to {humanize_timedelta(seconds=time_in_seconds)}"
+        )
 
     @vcafk.command()
-    async def waittime(self, ctx, *,time_str: str):
+    async def waittime(self, ctx, *, time_str: str):
         """User response waiting time when the question is asked
-        Example: 
+        Example:
         `[p]vcafk waittime 1h 30m`
         `[p]vcafk waittime 30m 1s`
         """
 
         time_in_seconds = self.convert_time(time_str)
+        if not time_in_seconds:
+            return await ctx.send_help()
         if time_in_seconds > 1:
             return await ctx.send("Please type a number greater than 1 and in proper format")
         await self.config.guild_from_id(ctx.guild.id).timeout.set(time_in_seconds)
-        await ctx.send(f"Sucessfully set the waittime to {humanize_timedelta(seconds=time_in_seconds)}")
+        await ctx.send(
+            f"Sucessfully set the waittime to {humanize_timedelta(seconds=time_in_seconds)}"
+        )
 
     @commands.is_owner()
     @commands.guild_only()
@@ -255,9 +267,9 @@ class VcAfk(commands.Cog):
                     for user in channel.members:
                         if user.id in self.active_users and role in user.roles:
                             self.active_users.pop(user.id)
-        
+
         await ctx.send(f"Anyone with the role `{role}` are immune to VC afk kicking")
-    
+
     # Removing this cause it pings maybe? might add if ya want
     # @role.command(name="list")
     # async def role_list(self, ctx):
@@ -274,7 +286,7 @@ class VcAfk(commands.Cog):
     #             or "None"
     #         )
     #     )
-    
+
     @role.command(name="remove")
     async def role_remove(self, ctx, role: discord.Role):
         """Remove role from the bypass list"""
@@ -290,7 +302,7 @@ class VcAfk(commands.Cog):
                 if isinstance(channel, discord.VoiceChannel):
                     for user in channel.members:
                         if user.id not in self.active_users and role in user.roles:
-                            self.active_users[user.id] = [channel,time.time()]
+                            self.active_users[user.id] = [channel, time.time()]
 
         await ctx.send(f"Removed the {role} role from allowlist")
 
@@ -355,7 +367,6 @@ class VcAfk(commands.Cog):
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
         return
 
-    
     def convert_time(self, text):
         # From dpy
         data = []

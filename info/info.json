@@ -1,0 +1,19 @@
+{
+    "name": "Info",
+    "short": "An info command cog",
+    "description": "Custom info command for twin shadow",
+    "end_user_data_statement": "This cog does not persistently store any data or metadata about users.",
+    "install_msg": "Have a nice day twin",
+    "author": [
+        "twin, epic guy"
+    ],
+    "required_cogs": {},
+    "requirements": [],
+    "tags": [
+        "utils"
+    ],
+    "min_bot_version": "3.3.10",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
