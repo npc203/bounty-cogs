@@ -79,6 +79,7 @@ class VcAfk(commands.Cog):
                 await vc_channel.guild.get_member(uid).move_to(
                     None, reason="Kicked for being AFK in VC"
                 )
+                await txt_channel.send(f"No response from {member.mention} , kicking from VC",allowed_mentions=discord.AllowedMentions.none())
             except discord.Forbidden:
                 await txt_channel.send(f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions")
                 self.active_users[uid] = [vc_channel, time.time()]
