@@ -225,7 +225,7 @@ class VcAfk(commands.Cog):
         time_in_seconds = self.convert_time(time_str)
         if not time_in_seconds:
             return await ctx.send_help()
-        if time_in_seconds > 1:
+        if time_in_seconds <= 1:
             return await ctx.send("Please type a number greater than 1 and in proper format")
         await self.config.guild_from_id(ctx.guild.id).timeout.set(time_in_seconds)
         await ctx.send(
