@@ -66,8 +66,17 @@ class VcAfk(commands.Cog):
         """Internal method to handle bot sending messages for a user"""
         self.active_users.pop(uid)
 
-        things = await self.config.guild_from_id(vc_channel.guild.id).all()
         member = vc_channel.guild.get_member(uid)
+
+        #member deletes account
+        if not member:
+            return
+        
+        # member magically became bot 
+        if member.bot:
+            return
+
+        things = await self.config.guild_from_id(vc_channel.guild.id).all()
 
         # if a role was imposed while in active_users
         if discord.utils.find(lambda role: role.id in things["roles"], member.roles):
@@ -92,17 +101,18 @@ class VcAfk(commands.Cog):
                 # very edge case while testing
                 if things["everything"] or things["call_channel"]:
                     self.active_users[uid] = [vc_channel, time.time()]
+                    
             except asyncio.TimeoutError:
                 try:
                     await vc_channel.guild.get_member(uid).move_to(
                         None, reason="Kicked for being AFK in VC"
                     )
                     await txt_channel.send(
-                        f"No response from {str(member)} , kicking from VC",
+                        f"No response from `{str(member)}` , kicking from VC",
                     )
                 except discord.Forbidden:
                     await txt_channel.send(
-                        f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions"
+                        f"Something went wrong while attempting to kick `{str(member)}` \n Please give me admin perms or cross check my permissions"
                     )
 
                     if things["everything"] or things["call_channel"]:
