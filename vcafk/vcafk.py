@@ -6,10 +6,15 @@ from redbot.core.config import Config
 import time
 import asyncio
 from typing import Union
-from redbot.core.utils.chat_formatting import humanize_timedelta
+from redbot.core.utils.chat_formatting import humanize_timedelta, pagify
 import re
 
-
+# check changes points
+# channel add , remove
+# role add , remove
+# handle_user_afk
+# vc_updates
+# msg_updates -
 class VcAfk(commands.Cog):
     """
     Kicks people from VC if AFK
@@ -27,7 +32,12 @@ class VcAfk(commands.Cog):
             msg="{user.mention} Are you still there? you got {timeout} seconds to respond"
         )
         self.config.register_guild(
-            resptime=3600, timeout=180, call_channel=None, channels=[], roles=[]
+            resptime=3600,
+            timeout=180,
+            call_channel=None,
+            channels=[],
+            roles=[],
+            everything=False,
         )
         self.active_users = {}  # uid: [channel,timestamp]
         self.main_update_loop.start()
@@ -41,6 +51,8 @@ class VcAfk(commands.Cog):
                 if item["call_channel"] is not None:
                     if channel := self.bot.get_channel(cid):
                         for member in channel.members:
+                            if member.bot:
+                                continue
                             for role in member.roles:
                                 if role.id in item["roles"]:
                                     break
@@ -61,32 +73,40 @@ class VcAfk(commands.Cog):
         if discord.utils.find(lambda role: role.id in things["roles"], member.roles):
             return
 
-        txt_channel = self.bot.get_channel(things["call_channel"])
-        await txt_channel.send(
-            (await self.config.msg()).format(user=member, timeout=things["timeout"])
-        )
-        try:
-            await self.bot.wait_for(
-                "message",
-                timeout=things["timeout"],
-                check=lambda msg: msg.author.id == uid and msg.channel.id == txt_channel.id,
+        # Channel was removed while being in active
+        if member.voice.channel.id not in things["channels"]:
+            return
+
+        if txt_channel := self.bot.get_channel(things["call_channel"]):
+            await txt_channel.send(
+                (await self.config.msg()).format(user=member, timeout=things["timeout"])
             )
-            await txt_channel.send("Alright, you aren't afk")
-            self.active_users[uid] = [vc_channel, time.time()]
-        except asyncio.TimeoutError:
             try:
-                await vc_channel.guild.get_member(uid).move_to(
-                    None, reason="Kicked for being AFK in VC"
+                await self.bot.wait_for(
+                    "message",
+                    timeout=things["timeout"],
+                    check=lambda msg: msg.author.id == uid and msg.channel.id == txt_channel.id,
                 )
-                await txt_channel.send(
-                    f"No response from {member.mention} , kicking from VC",
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-            except discord.Forbidden:
-                await txt_channel.send(
-                    f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions"
-                )
-                self.active_users[uid] = [vc_channel, time.time()]
+                await txt_channel.send("Alright, you aren't afk")
+
+                # very edge case while testing
+                if things["everything"] or things["call_channel"]:
+                    self.active_users[uid] = [vc_channel, time.time()]
+            except asyncio.TimeoutError:
+                try:
+                    await vc_channel.guild.get_member(uid).move_to(
+                        None, reason="Kicked for being AFK in VC"
+                    )
+                    await txt_channel.send(
+                        f"No response from {str(member)} , kicking from VC",
+                    )
+                except discord.Forbidden:
+                    await txt_channel.send(
+                        f"Something went wrong while attempting to kick <@{uid}> \n Please give me admin perms or cross check my permissions"
+                    )
+
+                    if things["everything"] or things["call_channel"]:
+                        self.active_users[uid] = [vc_channel, time.time()]
 
     @tasks.loop(seconds=10)
     async def main_update_loop(self):
@@ -110,12 +130,17 @@ class VcAfk(commands.Cog):
         if before.channel is None and after.channel:
             things = await self.config.guild_from_id(after.channel.guild.id).all()
 
-            # In an untracked channel:
-            if after.channel.id not in things["channels"]:
-                return
-
             # Has a whitelist role
             if discord.utils.find(lambda role: role.id in things["roles"], member.roles):
+                return
+
+            # Server override
+            if things["everything"] and things["call_channel"]:
+                self.active_users[member.id] = [after.channel, time.time()]
+                return
+
+            # In an untracked channel:
+            if after.channel.id not in things["channels"]:
                 return
 
             self.active_users[member.id] = [after.channel, time.time()]
@@ -145,6 +170,7 @@ class VcAfk(commands.Cog):
             if things["call_channel"]
             else "`disabled`"
         )
+
         embed = discord.Embed(
             title="Info Settings", description=f"VC tracking is {confirm} in this server"
         )
@@ -167,26 +193,38 @@ class VcAfk(commands.Cog):
             value=msg.format(user=ctx.author, timeout=things["timeout"]),
             inline=False,
         )
-        if things["channels"]:
-            embed.add_field(
-                name="Tracked channels",
-                value="\n".join(map(lambda x: f"<#{x}>", things["channels"])),
-                inline=False,
-            )
-        if things["roles"]:
-            embed.add_field(
-                name="Whitelisted roles",
-                value="\n".join(map(lambda x: f"<@&{x}>", things["roles"])),
-                inline=False,
-            )
+        embed.add_field(
+            name="Tracked channels",
+            value="All channels"
+            if things["everything"]
+            else (
+                "\n".join(map(lambda x: f"<#{x}>", things["channels"]))
+                or "No channels are being tracked"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Whitelisted roles",
+            value="\n".join(map(lambda x: f"<@&{x}>", things["roles"])) or "No whitelisted roles",
+            inline=False,
+        )
         await ctx.send(embed=embed)
 
     @vcafk.command()
     async def enable(self, ctx, false_or_channel: Union[bool, discord.TextChannel]):
         """Enable or disable tracking this server
-        Either use a channel"""
+        Either use a `Text channel` or `false`"""
         if not false_or_channel:
             await self.config.guild_from_id(ctx.guild.id).call_channel.set(None)
+            pop_users = []
+            for user, tup in self.active_users.items():
+                if tup[0].guild.id == ctx.guild.id:
+                    pop_users.append(user)
+
+            for i in pop_users:
+                self.active_users.pop(i)
+
             await ctx.send("Sucessfully disabled in this server")
         else:
             if type(false_or_channel) is discord.TextChannel:
@@ -194,8 +232,54 @@ class VcAfk(commands.Cog):
                 await ctx.send(
                     f"Sucessfully enabled VC tracking, prompts users in <#{false_or_channel.id}>"
                 )
+
+                item = await self.config.guild_from_id(ctx.guild.id).all()
+                for cid in item["channels"]:
+                    if channel := self.bot.get_channel(cid):
+                        for member in channel.members:
+                            if member.bot:
+                                continue
+                            for role in member.roles:
+                                if role.id in item["roles"]:
+                                    break
+                            else:
+                                self.active_users[member.id] = [channel, time.time()]
             else:
                 await ctx.send("Invalid choice: Either choose `false` or `A Text channel`")
+
+    @vcafk.command()
+    async def all(self, ctx, true_or_false: bool):
+        """Enable to track all the VC channels in a server
+        Note: Enabling this means you can't add or remove channels, cause everything is tracked"""
+        await self.config.guild_from_id(ctx.guild.id).everything.set(true_or_false)
+        if true_or_false:
+            item = await self.config.guild_from_id(ctx.guild.id).all()
+            if item["call_channel"] is not None:
+                await ctx.send("Sucessfully enabled, every VC is tracked now!")
+            else:
+                return await ctx.send(
+                    f"You need to set a text channel using `{ctx.prefix}vcafk enable` to enable tracking"
+                )
+
+            for cid in item["channels"]:
+                if channel := self.bot.get_channel(cid):
+                    for member in channel.members:
+                        if member.bot:
+                            continue
+                        for role in member.roles:
+                            if role.id in item["roles"]:
+                                break
+                        else:
+                            self.active_users[member.id] = [channel, time.time()]
+        else:
+            pop_users = []
+            for user, tup in self.active_users.items():
+                if tup[0].guild.id == ctx.guild.id:
+                    pop_users.append(user)
+
+            for i in pop_users:
+                self.active_users.pop(i)
+            await ctx.send("Sucessfully disabled, Please specify the channels to track")
 
     @vcafk.command()
     async def afktime(self, ctx, *, time_str: str):
@@ -260,13 +344,18 @@ class VcAfk(commands.Cog):
             else:
                 return await ctx.send("This role is already in the allowlist")
 
-        channels = await self.config.guild_from_id(ctx.guild.id).channels()
-        for cid in channels:
-            if channel := self.bot.get_channel(cid):
-                if isinstance(channel, discord.VoiceChannel):
-                    for user in channel.members:
-                        if user.id in self.active_users and role in user.roles:
-                            self.active_users.pop(user.id)
+        things = await self.config.guild_from_id(ctx.guild.id).all()
+        channels = (
+            ctx.guild.channels
+            if things["everything"]
+            else map(lambda x: self.bot.get_channel(x), things["channels"])
+        )
+
+        for channel in channels:
+            if isinstance(channel, discord.VoiceChannel):
+                for user in channel.members:
+                    if user.id in self.active_users and role in user.roles:
+                        self.active_users.pop(user.id)
 
         await ctx.send(f"Anyone with the role `{role}` are immune to VC afk kicking")
 
@@ -296,13 +385,20 @@ class VcAfk(commands.Cog):
             except ValueError:
                 return await ctx.send("This role is not present in the allowlist")
 
-        channels = await self.config.guild_from_id(ctx.guild.id).channels()
-        for cid in channels:
-            if channel := self.bot.get_channel(cid):
-                if isinstance(channel, discord.VoiceChannel):
-                    for user in channel.members:
-                        if user.id not in self.active_users and role in user.roles:
-                            self.active_users[user.id] = [channel, time.time()]
+        things = await self.config.guild_from_id(ctx.guild.id).all()
+        channels = (
+            ctx.guild.channels
+            if things["everything"]
+            else map(lambda x: self.bot.get_channel(x), things["channels"])
+        )
+
+        for channel in channels:
+            if isinstance(channel, discord.VoiceChannel):
+                for user in channel.members:
+                    if user.bot:
+                        continue
+                    if user.id not in self.active_users and role in user.roles:
+                        self.active_users[user.id] = [channel, time.time()]
 
         await ctx.send(f"Removed the {role} role from allowlist")
 
@@ -313,6 +409,9 @@ class VcAfk(commands.Cog):
     @channel.command(name="add")
     async def channel_add(self, ctx, channel: discord.VoiceChannel):
         """Add a voice channel(s) to the list"""
+        if await self.config.guild_from_id(ctx.guild.id).everything():
+            return await ctx.send("All VC channels are being tracked already")
+
         async with self.config.guild_from_id(ctx.guild.id).channels() as channels:
             if channel.id not in channels:
                 channels.append(channel.id)
@@ -321,6 +420,8 @@ class VcAfk(commands.Cog):
 
         roles = await self.config.guild_from_id(ctx.guild.id).roles()
         for member in channel.members:
+            if member.bot:
+                continue
             for role in member.roles:
                 if role.id in roles:
                     break
@@ -363,6 +464,12 @@ class VcAfk(commands.Cog):
             self.active_users.pop(uid)
 
         await ctx.send(f"<#{channel.id}> is removed from the tracking list")
+
+    @commands.is_owner()
+    @vcafk.command(hidden=True)
+    async def users(self, ctx):
+        """This is quick debug command"""
+        await ctx.send_interactive(pagify(str(self.active_users)))
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
         return
