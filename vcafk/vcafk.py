@@ -68,11 +68,11 @@ class VcAfk(commands.Cog):
 
         member = vc_channel.guild.get_member(uid)
 
-        #member deletes account
+        # member deletes account
         if not member:
             return
-        
-        # member magically became bot 
+
+        # member magically became bot
         if member.bot:
             return
 
@@ -101,7 +101,7 @@ class VcAfk(commands.Cog):
                 # very edge case while testing
                 if things["everything"] or things["call_channel"]:
                     self.active_users[uid] = [vc_channel, time.time()]
-                    
+
             except asyncio.TimeoutError:
                 try:
                     await vc_channel.guild.get_member(uid).move_to(
