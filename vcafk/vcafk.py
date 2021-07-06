@@ -166,6 +166,7 @@ class VcAfk(commands.Cog):
         if msg.author.id in self.active_users:
             self.active_users[msg.author.id][1] = time.time()
 
+    @commands.admin_or_permissions(administrator=True)
     @commands.group()
     async def vcafk(self, ctx):
         """Commands to setup VCafk"""
