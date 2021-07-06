@@ -8,7 +8,7 @@
         "epic guy"
     ],
     "required_cogs": {},
-    "requirements": [],
+    "requirements": ["fuzzywuzzy","pytz"],
     "tags": [
         "utility",
         "fun"
