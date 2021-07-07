@@ -92,7 +92,25 @@ class Matcher(commands.Cog):
         q = [
             ("What is your name?", "name", (lambda x: (x, len(x) < 70))),
             ("What is your age?", "age", (lambda x: (x, x.isdigit()))),
-            ("What is your gender?", "gender", (lambda x: (x, len(x) < 10))),
+            (
+                "What is your gender?",
+                "gender",
+                (
+                    lambda x: (
+                        x,
+                        x
+                        in (
+                            "heterosexual",
+                            "homosexual",
+                            "bisexual",
+                            "transgender",
+                            "demisexual",
+                            "genderfluid",
+                            "nonbinary",
+                        ),
+                    )
+                ),
+            ),
             ("What is your timezone? Contient/City", "timezone", (lambda x: (x, True))),  # TODO
             (
                 "which country do you live in?",
@@ -133,7 +151,7 @@ class Matcher(commands.Cog):
                     timeout=300,
                 )
             except asyncio.CancelledError:
-                return await ctx.send("Timed out, try again later")
+                return await ctx.author.send("Timed out, try again later")
 
             for _ in range(3):
                 ans = val[2](resp.content)
@@ -141,9 +159,9 @@ class Matcher(commands.Cog):
                     succ.append((val[1], ans[0]))
                     break
                 else:
-                    await ctx.send("Ill-formatted value, Try Again")
+                    await ctx.author.send("Ill-formatted value, Try Again")
             else:
-                return await ctx.send("Too many wrong values, Aborting")
+                return await ctx.author.send("Too many wrong values, Aborting")
                 break
         if succ:
             async with self.config.user_from_id(ctx.author.id).primary() as conf:
