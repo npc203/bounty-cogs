@@ -19,6 +19,7 @@ class Matcher(commands.Cog):
             identifier=674674390,
             force_registration=True,
         )
+        self.config.register_guild(accuracy=50)
         self.config.register_user(
             primary={
                 "name": None,
@@ -91,15 +92,17 @@ class Matcher(commands.Cog):
         # q[question,conf_attr,function(msg)->(value_to_write:str.check:bool)]
         q = [
             ("What is your name?", "name", (lambda x: (x, len(x) < 70))),
-            ("What is your age?", "age", (lambda x: (x, x.isdigit()))),
+            ("What is your age?", "age", (lambda x: (x, x.isdigit() and int(x) < 80))),
             (
-                "What is your gender?",
+                "What is your gender? ",
                 "gender",
                 (
                     lambda x: (
-                        x,
-                        x
+                        x.lower(),
+                        x.lower()
                         in (
+                            "male",
+                            "female",
                             "heterosexual",
                             "homosexual",
                             "bisexual",
@@ -107,6 +110,7 @@ class Matcher(commands.Cog):
                             "demisexual",
                             "genderfluid",
                             "nonbinary",
+                            "other",
                         ),
                     )
                 ),
