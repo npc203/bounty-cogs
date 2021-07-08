@@ -19,7 +19,7 @@ class Matcher(commands.Cog):
             identifier=674674390,
             force_registration=True,
         )
-        self.config.register_guild(accuracy=50)
+        self.config.register_guild(accuracy=80)
         self.config.register_user(
             primary={
                 "name": None,
@@ -33,6 +33,7 @@ class Matcher(commands.Cog):
                 "education": None,  # No idea what the heck is this
                 "pfp": None,
             },
+            token = 0,
             secondary={
                 "keywords": [],
             },
@@ -61,7 +62,11 @@ class Matcher(commands.Cog):
     async def match(self, ctx):
         """Find a match to you"""
         x = await self.config.all_users()  # TODO remove DMs
-        target = x.pop(ctx.author.id, None)["primary"]
+        full_client = x.pop(ctx.author.id, None)
+        if full_client["token"] <= 0:
+            return await ctx.send("You don't have any tokens! buy one from the shop")
+
+        target = full_client["primary"]
         if not target:
             return await ctx.send("You need to set a profile to match with others")
 
@@ -184,8 +189,36 @@ class Matcher(commands.Cog):
         """Add a selfie channel to take pfp"""
 
     @matchset.command()
-    async def edit(self, ctx, cmd, add_or_remove, person: discord.Member, *things):
-        """Edit various stuff of a person, if the bot get's it wrong"""
+    async def show(self,ctx):
+        """Shows info about the setup"""
+        a = await self.config.guild_from_id(ctx.guild.id).all()
+        emb = discord.Embed(title="Info")
+        for i,j in a.items():
+            emb.add_field(name=i,value=j)
+        await ctx.send(embed=emb)
+    
+    @matchset.command(name="token")
+    async def set_tokens(self,ctx,person:discord.User,number:int):
+        """Force reset a token to a new value for a person"""
+        async with self.config.user_from_id(person.id).token() as conf:
+            prev = conf
+            conf = number
+        await ctx.send(f"{str(person)}'s tokens is now {number}, previously it was {prev}")
+
+    
+    @matchset.command()
+    async def accuracy(self,ctx,number:int):
+        """Set the match lvl accuracy, between 1 and 100"""
+        if 0< number <= 100:
+            await self.config.guild_from_id(ctx.guild.id).accuracy.set(number)
+        else:
+            await ctx.send("Accuracy should be a number between 1 and 100")
+    
+    @matchset.command(name="1")
+    async def primary(self,ctx,person:discord.User,*,change):
+        """Edit primary settings of a person"""
+
+
 
     # thanks aika/vex
     # https://github.com/aikaterna/aikaterna-cogs/blob/v3/timezone/timezone.py#L35
