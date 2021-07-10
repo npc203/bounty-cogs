@@ -214,9 +214,11 @@ class Matcher(commands.Cog):
         else:
             await ctx.send("Accuracy should be a number between 1 and 100")
     
-    @matchset.command(name="1")
-    async def primary(self,ctx,person:discord.User,*,change):
+    @matchset.command(name="primary")
+    async def primary(self,ctx,person:discord.User,thing,*,change):
         """Edit primary settings of a person"""
+        await self.config.user_from_id(person.id)
+
 
 
 
