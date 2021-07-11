@@ -8,7 +8,7 @@
         "epic guy"
     ],
     "required_cogs": {},
-    "requirements": ["fuzzywuzzy","pytz"],
+    "requirements": ["fuzzywuzzy","pytz","pycountry"],
     "tags": [
         "utility",
         "fun"

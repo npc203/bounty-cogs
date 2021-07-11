@@ -5,6 +5,10 @@ from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
 from fuzzywuzzy import fuzz, process
+import inspect
+import pycountry
+import asyncio
+import pytz
 
 
 class Matcher(commands.Cog):
@@ -19,7 +23,7 @@ class Matcher(commands.Cog):
             identifier=674674390,
             force_registration=True,
         )
-        self.config.register_guild(accuracy=80)
+        self.config.register_guild(accuracy=80, tokenrate=300)
         self.config.register_user(
             primary={
                 "name": None,
@@ -33,7 +37,7 @@ class Matcher(commands.Cog):
                 "education": None,  # No idea what the heck is this
                 "pfp": None,
             },
-            token = 0,
+            token=0,
             secondary={
                 "keywords": [],
             },
@@ -63,6 +67,11 @@ class Matcher(commands.Cog):
         """Find a match to you"""
         x = await self.config.all_users()  # TODO remove DMs
         full_client = x.pop(ctx.author.id, None)
+        if not full_client:
+            return await ctx.send(
+                f"You have not set a profile, kindly set it up using `{ctx.prefix}setup`"
+            )
+
         if full_client["token"] <= 0:
             return await ctx.send("You don't have any tokens! buy one from the shop")
 
@@ -84,8 +93,9 @@ class Matcher(commands.Cog):
             if tmp[1] > score[1]:
                 score = tmp
 
+        accuracy = await self.config.guild_from_id(ctx.guild.id).accuracy()
         # print(score, flush=True)
-        if score[0] and score[1] > len(target) * 100 // 2:
+        if score[0] and score[1] > len(target) * 100 / accuracy:
             await ctx.send(f"The closest match the bot can find is {self.bot.get_user(score[0])}")
         else:
             await ctx.send("No close matches found")
@@ -120,11 +130,13 @@ class Matcher(commands.Cog):
                     )
                 ),
             ),
-            ("What is your timezone? Contient/City", "timezone", (lambda x: (x, True))),  # TODO
+            ("What is your timezone? Contient/City", "timezone", self.get_timezone),  # TODO
             (
                 "which country do you live in?",
                 "location",
-                (lambda x: (x.lower(), x.isalnum())),
+                lambda x: (lambda country: (country.official_name, True))(
+                    pycountry.countries.search_fuzzy(x)[0]
+                ),
             ),  # TODO
             (
                 "Are you married/single/taken?",
@@ -151,22 +163,36 @@ class Matcher(commands.Cog):
 
         conf = self.config.user_from_id(ctx.author.id)
         succ = []
+        prev = None
         for ind, val in enumerate(q, 1):
-            await ctx.author.send(f"{ind}. {val[0]}")
-            try:
-                resp = await self.bot.wait_for(
-                    "message",
-                    check=lambda x: ctx.author == x.author and x.guild is None,
-                    timeout=300,
-                )
-            except asyncio.CancelledError:
-                return await ctx.author.send("Timed out, try again later")
-
+            await ctx.author.send(
+                (f"Your answer was: {prev}" if prev else "") + f"\n{ind}. {val[0]}"
+            )
             for _ in range(3):
-                ans = val[2](resp.content)
+                try:
+                    resp = await self.bot.wait_for(
+                        "message",
+                        check=lambda x: ctx.author == x.author and x.guild is None,
+                        timeout=300,
+                    )
+                except asyncio.TimeoutError:
+                    return await ctx.author.send("Timed out, try again later")
+
+                if "cancel" == resp.content.lower():
+                    return await ctx.send("You have cancelled your setup")
+
+                # Parse le questions
+                if inspect.iscoroutinefunction(val[2]):
+                    ans = await val[2](ctx, resp.content)
+                else:
+                    ans = val[2](resp.content)
+
                 if ans[1]:
                     succ.append((val[1], ans[0]))
+                    prev = ans[0]
                     break
+                elif ans[0] is None:
+                    pass
                 else:
                     await ctx.author.send("Ill-formatted value, Try Again")
             else:
@@ -187,40 +213,55 @@ class Matcher(commands.Cog):
     @matchset.command()
     async def selfie(self, ctx, channel: discord.TextChannel):
         """Add a selfie channel to take pfp"""
+        # TODO
 
     @matchset.command()
-    async def show(self,ctx):
+    async def show(self, ctx):
         """Shows info about the setup"""
         a = await self.config.guild_from_id(ctx.guild.id).all()
-        emb = discord.Embed(title="Info")
-        for i,j in a.items():
-            emb.add_field(name=i,value=j)
+        emb = discord.Embed(title="Info", color=await ctx.embed_color())
+        for i, j in a.items():
+            emb.add_field(name=i, value=j)
         await ctx.send(embed=emb)
-    
-    @matchset.command(name="token")
-    async def set_tokens(self,ctx,person:discord.User,number:int):
-        """Force reset a token to a new value for a person"""
-        async with self.config.user_from_id(person.id).token() as conf:
-            prev = conf
-            conf = number
-        await ctx.send(f"{str(person)}'s tokens is now {number}, previously it was {prev}")
 
-    
+    @matchset.command(name="token")
+    async def set_tokens(self, ctx, person: discord.User, number: int):
+        """Force reset a token to a new value for a person"""
+        prev = await self.config.user_from_id(person.id).token()
+        await self.config.user_from_id(person.id).token.set(number)
+        await ctx.send(f"`{str(person)}`'s tokens is now {number}, previously it was {prev}")
+
     @matchset.command()
-    async def accuracy(self,ctx,number:int):
+    async def accuracy(self, ctx, number: int):
         """Set the match lvl accuracy, between 1 and 100"""
-        if 0< number <= 100:
+        if 0 < number <= 100:
             await self.config.guild_from_id(ctx.guild.id).accuracy.set(number)
         else:
             await ctx.send("Accuracy should be a number between 1 and 100")
-    
+
     @matchset.command(name="primary")
-    async def primary(self,ctx,person:discord.User,thing,*,change):
+    async def primary(self, ctx, person: discord.User, thing, *, change):
         """Edit primary settings of a person"""
         await self.config.user_from_id(person.id)
 
-
-
+    async def get_timezone(self, ctx, x):
+        if res := self.fuzzy_timezone_search(x):
+            if len(res) == 1:
+                return res[0], True
+            else:
+                await ctx.send(
+                    embed=discord.Embed(
+                        title="Pick a timezone from:",
+                        description="click [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to get a list of all valid timezones"
+                        + ("\n".join(res)),
+                    ).set_footer(text="And try again")
+                )
+                return None, False
+        else:
+            await ctx.send(
+                "Couldn't find timezone, pick one from <https://en.wikipedia.org/wiki/List_of_tz_database_time_zones> and type again"
+            )
+            return None, False
 
     # thanks aika/vex
     # https://github.com/aikaterna/aikaterna-cogs/blob/v3/timezone/timezone.py#L35
@@ -228,7 +269,7 @@ class Matcher(commands.Cog):
         fuzzy_results = process.extract(
             tz.replace(" ", "_"), pytz.common_timezones, limit=500, scorer=fuzz.partial_ratio
         )
-        matches = [x for x in fuzzy_results if x[1] > 98]
+        matches = [x[0] for x in fuzzy_results if x[1] > 98]
         return matches
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
