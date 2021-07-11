@@ -249,7 +249,7 @@ class Matcher(commands.Cog):
             if len(res) == 1:
                 return res[0], True
             else:
-                await ctx.send(
+                await ctx.author.send(
                     embed=discord.Embed(
                         title="Pick a timezone from:",
                         description="click [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to get a list of all valid timezones"
@@ -258,7 +258,7 @@ class Matcher(commands.Cog):
                 )
                 return None, False
         else:
-            await ctx.send(
+            await ctx.author.send(
                 "Couldn't find timezone, pick one from <https://en.wikipedia.org/wiki/List_of_tz_database_time_zones> and type again"
             )
             return None, False
