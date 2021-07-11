@@ -203,7 +203,9 @@ class Matcher(commands.Cog):
                 for i, j in succ:
                     conf[i] = j
 
-        await ctx.send(f"You have set your profile! , check it out using {ctx.prefix}profile")
+        await ctx.author.send(
+            f"You have set your profile! , check it out using {ctx.prefix}profile"
+        )
 
     @commands.admin()
     @commands.group()
