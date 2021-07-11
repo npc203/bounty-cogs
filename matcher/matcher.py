@@ -179,7 +179,7 @@ class Matcher(commands.Cog):
                     return await ctx.author.send("Timed out, try again later")
 
                 if "cancel" == resp.content.lower():
-                    return await ctx.send("You have cancelled your setup")
+                    return await ctx.author.send("You have cancelled your setup")
 
                 # Parse le questions
                 if inspect.iscoroutinefunction(val[2]):
