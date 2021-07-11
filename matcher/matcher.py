@@ -252,7 +252,7 @@ class Matcher(commands.Cog):
                 await ctx.author.send(
                     embed=discord.Embed(
                         title="Pick a timezone from:",
-                        description="click [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to get a list of all valid timezones"
+                        description="click [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to get a list of all valid timezones\n"
                         + ("\n".join(res)),
                     ).set_footer(text="And try again")
                 )
