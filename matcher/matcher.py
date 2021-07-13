@@ -57,7 +57,7 @@ class Matcher(commands.Cog):
         for name, value in data["primary"].items():
             emb.add_field(
                 name=name.title(),
-                value=(str(value) if type(value) is not list else ", ".join(value))
+                value=(str(value).title() if type(value) is not list else ", ".join(value))
                 or "Not set yet",
             )
         return emb
@@ -107,9 +107,9 @@ class Matcher(commands.Cog):
         # q[question,conf_attr,function(msg)->(value_to_write:str.check:bool)]
         q = [
             ("What is your name?", "name", (lambda x: (x, len(x) < 70))),
-            ("What is your age?", "age", (lambda x: (x, x.isdigit() and int(x) < 80))),
+            ("How old are you?", "age", (lambda x: (x, x.isdigit() and int(x) < 80))),
             (
-                "What is your gender? ",
+                "What is your gender? (Use 'other' if you don't want to mention it)",
                 "gender",
                 (
                     lambda x: (
@@ -125,6 +125,7 @@ class Matcher(commands.Cog):
                             "demisexual",
                             "genderfluid",
                             "nonbinary",
+                            "gay",
                             "other",
                         ),
                     )
@@ -132,7 +133,7 @@ class Matcher(commands.Cog):
             ),
             ("What is your timezone? Contient/City", "timezone", self.get_timezone),  # TODO
             (
-                "which country do you live in?",
+                "Which country do you live in?",
                 "location",
                 lambda x: (lambda country: (country.official_name, True))(
                     pycountry.countries.search_fuzzy(x)[0]
