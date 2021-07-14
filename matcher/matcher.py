@@ -1,15 +1,19 @@
 from typing import Literal
 
 import discord
-from redbot.core import commands
+from redbot.core import commands,data_manager
 from redbot.core.bot import Red
 from redbot.core.config import Config
+from redbot.core.utils.chat_formatting import box
 from fuzzywuzzy import fuzz, process
 import inspect
 import pycountry
 import asyncio
 import pytz
-
+import yake
+import json
+from collections import defaultdict
+from discord.ext import tasks
 
 class Matcher(commands.Cog):
     """
@@ -24,6 +28,8 @@ class Matcher(commands.Cog):
             force_registration=True,
         )
         self.config.register_guild(accuracy=80, tokenrate=300)
+        self.filter_kw = yake.KeywordExtractor(lan= "en", n=3, dedupLim=0.9, features=None)
+        self.main_update_loop.start()
         self.config.register_user(
             primary={
                 "name": None,
@@ -40,10 +46,37 @@ class Matcher(commands.Cog):
             token=0,
             secondary={
                 "keywords": [],
+                "likes":[],
+                "exp" : [],
+                "hobbies":[]
             },
             hide=[],  # A list, the user can use to hide stuff they don't wanna show
         )
+        self.cache = defaultdict(lambda : {"likes":set(),"exp":set(),"hobbies":set()})
+        with open(data_manager.bundled_data_path(self) / "all.json", "r", encoding="utf8") as f:
+            self.search_words = json.load(f)
 
+    def cog_unload(self):
+        self.main_update_loop.cancel()
+
+    @tasks.loop(seconds=30)
+    async def main_update_loop(self):
+        for k,v in self.cache.items():
+            async with self.config.user_from_id(k).secondary() as conf:
+                for i,j in v.items():
+                    conf[i] = list(set(conf[i]).union(j))
+        self.cache = defaultdict(lambda : {"likes":set(),"exp":set(),"hobbies":set()})
+
+    @commands.Cog.listener(name="on_message_without_command")
+    async def secondary_kw(self,msg):
+        if msg.author.bot:
+            return
+        text = msg.content
+        kw = tuple(map(lambda x: x[0] ,self.filter_kw.extract_keywords(text)))
+        self.cache[msg.author.id]["likes"].update([s for s in self.search_words['likes'] if any(xs in s for xs in kw)])
+        self.cache[msg.author.id]["exp"].update([s for s in self.search_words['exp'] if any(xs in s for xs in kw)])
+        del kw
+        
     @commands.command()
     async def profile(self, ctx):
         """See your profile"""
@@ -135,9 +168,7 @@ class Matcher(commands.Cog):
             (
                 "Which country do you live in?",
                 "location",
-                lambda x: (lambda country: (country.official_name, True))(
-                    pycountry.countries.search_fuzzy(x)[0]
-                ),
+                self.check_country,
             ),  # TODO
             (
                 "Are you married/single/taken?",
@@ -242,11 +273,36 @@ class Matcher(commands.Cog):
         else:
             await ctx.send("Accuracy should be a number between 1 and 100")
 
-    @matchset.command(name="primary")
-    async def primary(self, ctx, person: discord.User, thing, *, change):
+    @matchset.group(aliases=["1"])
+    async def primary(self, ctx):
         """Edit primary settings of a person"""
-        await self.config.user_from_id(person.id)
-
+    
+    @primary.command()
+    async def primary_edit(self,ctx, person: discord.User, thing, *, change):
+        if value_get := getattr(self.config.user_from_id(person.id),thing,None):
+            value = await value_get()
+            if isinstance(value,list):
+                await value_get.set([i.strip() for i in value.split(",")])
+                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}")
+            else:
+                await value_get.set(change)
+                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change}")
+        else:
+            await ctx.send("Value not found")
+    
+    @matchset.group()
+    async def secondary(self, ctx):
+        """Edit secondary settings of a person"""
+    
+    @secondary.command(aliases=["2"])
+    async def show(self,ctx,person:discord.User):
+        details = await self.config.user_from_id(person.id).secondary.all()
+        emb = discord.Embed(title=f"All secondary data from {person.name}")
+        emb.set_thumbnail(url=person.avatar_url)
+        for i,j in details.items():
+            emb.add_field(name=i,value=box((", ".join(j)) or "Nothing here yet.."),inline=False)
+        await ctx.send(embed=emb)
+        
     async def get_timezone(self, ctx, x):
         if res := self.fuzzy_timezone_search(x):
             if len(res) == 1:
@@ -266,6 +322,14 @@ class Matcher(commands.Cog):
             )
             return None, False
 
+    def check_country(self,x):
+        country = pycountry.countries.search_fuzzy(x)
+        if not country:
+            return None,False
+        if parsed := getattr(country,"official_name", None):
+            return parsed,True
+        return country.name,True
+
     # thanks aika/vex
     # https://github.com/aikaterna/aikaterna-cogs/blob/v3/timezone/timezone.py#L35
     def fuzzy_timezone_search(self, tz: str):
@@ -278,3 +342,4 @@ class Matcher(commands.Cog):
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
         # TODO: Replace this with the proper end user data removal handling.
         super().red_delete_data_for_user(requester=requester, user_id=user_id)
+
