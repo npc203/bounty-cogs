@@ -77,9 +77,17 @@ class Matcher(commands.Cog):
         kw = []
         for i in self.filter_kw.extract_keywords(text):
             kw.extend(i[0].split()) 
-        self.cache[msg.author.id]["likes"].update([w for i in kw for w in self.search_words["likes"] if i.lower() in w])
-        self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
-        del kw
+
+        fin = []
+        for i in kw:
+            for j in self.search_words["likes"]:
+                if i.lower() in j:
+                    fin.append(j)
+                    break
+
+        self.cache[msg.author.id]["likes"].update(fin)
+        #self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
+        #del kw,fin
         
     @commands.command()
     async def profile(self, ctx):
