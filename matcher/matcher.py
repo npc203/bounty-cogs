@@ -59,22 +59,26 @@ class Matcher(commands.Cog):
     def cog_unload(self):
         self.main_update_loop.cancel()
 
-    @tasks.loop(seconds=30)
+    @tasks.loop(seconds=5)
     async def main_update_loop(self):
-        for k,v in self.cache.items():
-            async with self.config.user_from_id(k).secondary() as conf:
-                for i,j in v.items():
-                    conf[i] = list(set(conf[i]).union(j))
+        # HOTFIX, fix later
+        for k,v in self.cache.copy().items():
+            if any(v.values()):
+                async with self.config.user_from_id(k).secondary() as conf:
+                    for i,j in v.items():
+                        conf[i] = list(set(conf[i]).union(j))
         self.cache = defaultdict(lambda : {"likes":set(),"exp":set(),"hobbies":set()})
 
     @commands.Cog.listener(name="on_message_without_command")
     async def secondary_kw(self,msg):
-        if msg.author.bot:
+        if msg.author.bot and msg.guild is not None:
             return
         text = msg.content
-        kw = tuple(map(lambda x: x[0] ,self.filter_kw.extract_keywords(text)))
-        self.cache[msg.author.id]["likes"].update([s for s in self.search_words['likes'] if any(xs in s for xs in kw)])
-        self.cache[msg.author.id]["exp"].update([s for s in self.search_words['exp'] if any(xs in s for xs in kw)])
+        kw = []
+        for i in self.filter_kw.extract_keywords(text):
+            kw.extend(i[0].split()) 
+        self.cache[msg.author.id]["likes"].update([w for i in kw for w in self.search_words["likes"] if i.lower() in w])
+        self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
         del kw
         
     @commands.command()
@@ -240,6 +244,7 @@ class Matcher(commands.Cog):
         )
 
     @commands.admin()
+    @commands.guild_only()
     @commands.group()
     async def matchset(self, ctx):
         """Settings to setup matcher"""
@@ -290,11 +295,11 @@ class Matcher(commands.Cog):
         else:
             await ctx.send("Value not found")
     
-    @matchset.group()
+    @matchset.group(aliases=["2"])
     async def secondary(self, ctx):
         """Edit secondary settings of a person"""
     
-    @secondary.command(aliases=["2"])
+    @secondary.command()
     async def show(self,ctx,person:discord.User):
         details = await self.config.user_from_id(person.id).secondary.all()
         emb = discord.Embed(title=f"All secondary data from {person.name}")
@@ -323,8 +328,9 @@ class Matcher(commands.Cog):
             return None, False
 
     def check_country(self,x):
-        country = pycountry.countries.search_fuzzy(x)
-        if not country:
+        try:
+            country = pycountry.countries.search_fuzzy(x)[0]
+        except LookupError:
             return None,False
         if parsed := getattr(country,"official_name", None):
             return parsed,True
