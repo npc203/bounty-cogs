@@ -74,10 +74,7 @@ class Matcher(commands.Cog):
         if msg.author.bot and msg.guild is not None:
             return
         text = msg.content
-        kw = []
-        for i in text.split():
-            kw.extend(i.split()) 
-
+        kw = text.split()
         fin = []
         for i in kw:
             for j in self.search_words["likes"]:
@@ -263,8 +260,8 @@ class Matcher(commands.Cog):
         """Add a selfie channel to take pfp"""
         # TODO
 
-    @matchset.command()
-    async def show(self, ctx):
+    @matchset.command(name="show")
+    async def matchset_guild_show(self, ctx):
         """Shows guild settings about matchmaking"""
         a = await self.config.guild_from_id(ctx.guild.id).all()
         emb = discord.Embed(title="Info", color=await ctx.embed_color())
@@ -308,8 +305,9 @@ class Matcher(commands.Cog):
     async def secondary(self, ctx):
         """Edit secondary settings of a person"""
     
-    @secondary.command()
-    async def show(self,ctx,person:discord.User):
+    @secondary.command(name="show")
+    async def secondary_show(self,ctx,person:discord.User):
+        """Show the secondary keywords of the specified person"""
         details = await self.config.user_from_id(person.id).secondary.all()
         emb = discord.Embed(title=f"All secondary data from {person.name}")
         emb.set_thumbnail(url=person.avatar_url)
