@@ -75,8 +75,8 @@ class Matcher(commands.Cog):
             return
         text = msg.content
         kw = []
-        for i in self.filter_kw.extract_keywords(text):
-            kw.extend(i[0].split()) 
+        for i in text.split():
+            kw.extend(i.split()) 
 
         fin = []
         for i in kw:
@@ -171,6 +171,7 @@ class Matcher(commands.Cog):
                             "genderfluid",
                             "nonbinary",
                             "gay",
+                            "lesbian",
                             "other",
                         ),
                     )
@@ -200,7 +201,7 @@ class Matcher(commands.Cog):
         ]
         try:
             await ctx.author.send(
-                f"Setup your profile by answering the following {len(q)} questions:\n You can always cancel anytime by typing `cancel`"
+                f"Set up your profile by answering the following {len(q)} questions:\n You can always cancel anytime by typing `cancel`"
             )
         except discord.Forbidden:
             return await ctx.send("I can't send messages to you")
@@ -220,10 +221,10 @@ class Matcher(commands.Cog):
                         timeout=300,
                     )
                 except asyncio.TimeoutError:
-                    return await ctx.author.send("Timed out, try again later")
+                    return await ctx.author.send(":negative_squared_cross_mark: Timed out, try again later.")
 
                 if "cancel" == resp.content.lower():
-                    return await ctx.author.send("You have cancelled your setup")
+                    return await ctx.author.send(":negative_squared_cross_mark: You have cancelled your setup.")
 
                 # Parse le questions
                 if inspect.iscoroutinefunction(val[2]):
@@ -238,9 +239,9 @@ class Matcher(commands.Cog):
                 elif ans[0] is None:
                     pass
                 else:
-                    await ctx.author.send("Ill-formatted value, Try Again")
+                    await ctx.author.send(":negative_squared_cross_mark: Ill-formatted value, Try Again.")
             else:
-                return await ctx.author.send("Too many wrong values, Aborting")
+                return await ctx.author.send(":negative_squared_cross_mark: Too many wrong values, Aborting.")
                 break
         if succ:
             async with self.config.user_from_id(ctx.author.id).primary() as conf:
@@ -248,14 +249,14 @@ class Matcher(commands.Cog):
                     conf[i] = j
 
         await ctx.author.send(
-            f"You have set your profile! , check it out using {ctx.prefix}profile"
+            f":verifycyan: You have set your profile! , check it out using {ctx.prefix}profile."
         )
 
     @commands.admin()
     @commands.guild_only()
     @commands.group()
     async def matchset(self, ctx):
-        """Settings to setup matcher"""
+        """Settings to set up matcher"""
 
     @matchset.command()
     async def selfie(self, ctx, channel: discord.TextChannel):
@@ -264,7 +265,7 @@ class Matcher(commands.Cog):
 
     @matchset.command()
     async def show(self, ctx):
-        """Shows info about the setup"""
+        """Shows guild settings about matchmaking"""
         a = await self.config.guild_from_id(ctx.guild.id).all()
         emb = discord.Embed(title="Info", color=await ctx.embed_color())
         for i, j in a.items():
@@ -276,15 +277,15 @@ class Matcher(commands.Cog):
         """Force reset a token to a new value for a person"""
         prev = await self.config.user_from_id(person.id).token()
         await self.config.user_from_id(person.id).token.set(number)
-        await ctx.send(f"`{str(person)}`'s tokens is now {number}, previously it was {prev}")
+        await ctx.send(f"`{str(person)}`'s tokens is now {number}, previously it was {prev}.")
 
     @matchset.command()
     async def accuracy(self, ctx, number: int):
-        """Set the match lvl accuracy, between 1 and 100"""
+        """Set the match level accuracy, between 1 and 100"""
         if 0 < number <= 100:
             await self.config.guild_from_id(ctx.guild.id).accuracy.set(number)
         else:
-            await ctx.send("Accuracy should be a number between 1 and 100")
+            await ctx.send("Accuracy should be a number between 1 and 100.")
 
     @matchset.group(aliases=["1"])
     async def primary(self, ctx):
