@@ -14,7 +14,6 @@ import yake
 import json
 from collections import defaultdict
 from discord.ext import tasks
-
 class Matcher(commands.Cog):
     """
     Matchmaking for fun
@@ -47,6 +46,7 @@ class Matcher(commands.Cog):
             secondary={
                 "keywords": [],
                 "likes":[],
+                "dislikes":[],
                 "exp" : [],
                 "hobbies":[]
             },
@@ -74,15 +74,31 @@ class Matcher(commands.Cog):
         if msg.author.bot and msg.guild is not None:
             return
         text = msg.content
-        kw = text.split()
-        fin = []
+        kw =set(i[0] for i in self.filter_kw.extract_keywords(text))
+
+        fin_likes = []
+        fin_hobbies = []
+        fin_exp = []
+
         for i in kw:
+            if len(i) <= 2:
+                continue
             for j in self.search_words["likes"]:
-                if i.lower() in j:
-                    fin.append(j)
+                if i.lower() in j.split():
+                    fin_likes.append(j)
+                    break
+            for j in self.search_words["exp"]:
+                if i.lower() in j.split():
+                    fin_exp.append(j)
+                    break       
+            for j in self.search_words["hobbies"]:
+                if i.lower() in j.split():
+                    fin_hobbies.append(j)
                     break
 
-        self.cache[msg.author.id]["likes"].update(fin)
+        self.cache[msg.author.id]["likes"].update(fin_likes)
+        self.cache[msg.author.id]["exp"].update(fin_exp)
+        self.cache[msg.author.id]["hobbies"].update(fin_hobbies)
         #self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
         #del kw,fin
         
@@ -288,9 +304,10 @@ class Matcher(commands.Cog):
     async def primary(self, ctx):
         """Edit primary settings of a person"""
     
-    @primary.command()
+    @primary.command(name="edit")
     async def primary_edit(self,ctx, person: discord.User, thing, *, change):
-        if value_get := getattr(self.config.user_from_id(person.id),thing,None):
+        """Edit primary settings of a person"""
+        if value_get := getattr(self.config.user_from_id(person.id).primary,thing,None):
             value = await value_get()
             if isinstance(value,list):
                 await value_get.set([i.strip() for i in value.split(",")])
@@ -304,6 +321,20 @@ class Matcher(commands.Cog):
     @matchset.group(aliases=["2"])
     async def secondary(self, ctx):
         """Edit secondary settings of a person"""
+
+    @matchset.command(name="edit")
+    async def secondary_edit(self, ctx, person: discord.User, thing, *, change):
+        """Edit Secondary data of any person"""
+        if value_get := getattr(self.config.user_from_id(person.id).secondary,thing,None):
+            value = await value_get()
+            if isinstance(value,list):
+                await value_get.set([i.strip() for i in value.split(",")])
+                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}")
+            else:
+                await value_get.set(change)
+                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change}")
+        else:
+            await ctx.send("Value not found")
     
     @secondary.command(name="show")
     async def secondary_show(self,ctx,person:discord.User):
