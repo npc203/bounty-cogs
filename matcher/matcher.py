@@ -1,7 +1,7 @@
 from typing import Literal
 
 import discord
-from redbot.core import commands,data_manager
+from redbot.core import commands, data_manager
 from redbot.core.bot import Red
 from redbot.core.config import Config
 from redbot.core.utils.chat_formatting import box
@@ -14,6 +14,8 @@ import yake
 import json
 from collections import defaultdict
 from discord.ext import tasks
+
+
 class Matcher(commands.Cog):
     """
     Matchmaking for fun
@@ -27,10 +29,11 @@ class Matcher(commands.Cog):
             force_registration=True,
         )
         self.config.register_guild(accuracy=80, tokenrate=300)
-        self.filter_kw = yake.KeywordExtractor(lan= "en", n=3, dedupLim=0.9, features=None)
+        self.filter_kw = yake.KeywordExtractor(lan="en", n=3, dedupLim=0.9, features=None)
         self.main_update_loop.start()
         self.config.register_user(
             primary={
+                "Age Verified": False,
                 "name": None,
                 "age": None,
                 "gender": None,
@@ -43,38 +46,48 @@ class Matcher(commands.Cog):
                 "pfp": None,
             },
             token=0,
-            secondary={
-                "keywords": [],
-                "likes":[],
-                "dislikes":[],
-                "exp" : [],
-                "hobbies":[]
-            },
+            secondary={"keywords": [], "likes": [], "dislikes": [], "exp": [], "hobbies": []},
             hide=[],  # A list, the user can use to hide stuff they don't wanna show
         )
-        self.cache = defaultdict(lambda : {"likes":set(),"exp":set(),"hobbies":set()})
+        self.cache = defaultdict(lambda: {"likes": set(), "exp": set(), "hobbies": set()})
         with open(data_manager.bundled_data_path(self) / "all.json", "r", encoding="utf8") as f:
             self.search_words = json.load(f)
 
     def cog_unload(self):
         self.main_update_loop.cancel()
 
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
+        if user.bot:
+            return
+        pass
+
     @tasks.loop(seconds=5)
     async def main_update_loop(self):
         # HOTFIX, fix later
-        for k,v in self.cache.copy().items():
+        for k, v in self.cache.copy().items():
             if any(v.values()):
                 async with self.config.user_from_id(k).secondary() as conf:
-                    for i,j in v.items():
+                    for i, j in v.items():
                         conf[i] = list(set(conf[i]).union(j))
-        self.cache = defaultdict(lambda : {"likes":set(),"exp":set(),"hobbies":set()})
+        self.cache = defaultdict(lambda: {"likes": set(), "exp": set(), "hobbies": set()})
+
+    @commands.admin()
+    @commands.command()
+    async def ageverify(self, ctx, user: discord.User):
+        async with self.config.user_from_id(user.id).primary() as conf:
+            if not conf["Age Verified"]:
+                conf["Age Verified"] = True
+                await ctx.send(f"Age is verified for {user.name}")
+            else:
+                await ctx.send("Already verified >_>")
 
     @commands.Cog.listener(name="on_message_without_command")
-    async def secondary_kw(self,msg):
+    async def secondary_kw(self, msg):
         if msg.author.bot and msg.guild is not None:
             return
         text = msg.content
-        kw =set(i[0] for i in self.filter_kw.extract_keywords(text))
+        kw = set(i[0] for i in self.filter_kw.extract_keywords(text))
 
         fin_likes = []
         fin_hobbies = []
@@ -90,7 +103,7 @@ class Matcher(commands.Cog):
             for j in self.search_words["exp"]:
                 if i.lower() in j.split():
                     fin_exp.append(j)
-                    break       
+                    break
             for j in self.search_words["hobbies"]:
                 if i.lower() in j.split():
                     fin_hobbies.append(j)
@@ -99,9 +112,9 @@ class Matcher(commands.Cog):
         self.cache[msg.author.id]["likes"].update(fin_likes)
         self.cache[msg.author.id]["exp"].update(fin_exp)
         self.cache[msg.author.id]["hobbies"].update(fin_hobbies)
-        #self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
-        #del kw,fin
-        
+        # self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
+        # del kw,fin
+
     @commands.command()
     async def profile(self, ctx):
         """See your profile"""
@@ -113,10 +126,12 @@ class Matcher(commands.Cog):
         pfp = data["primary"].pop("pfp")
         emb.set_thumbnail(url=pfp or ctx.author.avatar_url)
         for name, value in data["primary"].items():
+            val = str(value).title() if type(value) is not list else ", ".join(value)
+            if name == "age":
+                val = val if val < 30 else "30+"
             emb.add_field(
                 name=name.title(),
-                value=(str(value).title() if type(value) is not list else ", ".join(value))
-                or "Not set yet",
+                value=val or "Not set yet",
             )
         return emb
 
@@ -154,7 +169,14 @@ class Matcher(commands.Cog):
         accuracy = await self.config.guild_from_id(ctx.guild.id).accuracy()
         # print(score, flush=True)
         if score[0] and score[1] > len(target) * 100 / accuracy:
-            await ctx.send(f"The closest match the bot can find is {self.bot.get_user(score[0])}")
+            user = self.bot.get_user(score[0])
+            await ctx.send(
+                f"The closest match the bot can find is {user.name}, I've just dm'ed them, have a chat with them"
+            )
+            await user.send(
+                f"You have been matched with {str(ctx.author)} , Feel free to DM them, have a nice day."
+                "To disable further matchamakings, kindly use `.match disable`"
+            )
         else:
             await ctx.send("No close matches found")
 
@@ -167,7 +189,7 @@ class Matcher(commands.Cog):
             ("What is your name?", "name", (lambda x: (x, len(x) < 70))),
             ("How old are you?", "age", (lambda x: (x, x.isdigit() and int(x) < 80))),
             (
-                "What is your gender? (Use 'other' if you don't want to mention it)",
+                "What is your gender? (pick from the options)\n1) Male\n2) Female\n3) Transgender\n4) Cisgender\n5) Nonbinary\n6) Other",
                 "gender",
                 (
                     lambda x: (
@@ -176,11 +198,10 @@ class Matcher(commands.Cog):
                         in (
                             "male",
                             "female",
-                            "heterosexual",
+                            "cisgender",
                             "homosexual",
                             "bisexual",
                             "transgender",
-                            "demisexual",
                             "genderfluid",
                             "nonbinary",
                             "gay",
@@ -190,7 +211,11 @@ class Matcher(commands.Cog):
                     )
                 ),
             ),
-            ("What is your timezone? Contient/City", "timezone", self.get_timezone),  # TODO
+            (
+                "What is your timezone? Contient/City (e.g America/New_York)",
+                "timezone",
+                self.get_timezone,
+            ),  # TODO
             (
                 "Which country do you live in?",
                 "location",
@@ -224,7 +249,7 @@ class Matcher(commands.Cog):
         prev = None
         for ind, val in enumerate(q, 1):
             await ctx.author.send(
-                (f"Your answer was: {prev}" if prev else "") + f"\n{ind}. {val[0]}"
+                (f"Your answer was: {prev.capitalize()}" if prev else "") + f"\n{ind}. {val[0]}"
             )
             for _ in range(3):
                 try:
@@ -234,10 +259,14 @@ class Matcher(commands.Cog):
                         timeout=300,
                     )
                 except asyncio.TimeoutError:
-                    return await ctx.author.send(":negative_squared_cross_mark: Timed out, try again later.")
+                    return await ctx.author.send(
+                        ":negative_squared_cross_mark: Timed out, try again later."
+                    )
 
                 if "cancel" == resp.content.lower():
-                    return await ctx.author.send(":negative_squared_cross_mark: You have cancelled your setup.")
+                    return await ctx.author.send(
+                        ":negative_squared_cross_mark: You have cancelled your setup."
+                    )
 
                 # Parse le questions
                 if inspect.iscoroutinefunction(val[2]):
@@ -252,9 +281,13 @@ class Matcher(commands.Cog):
                 elif ans[0] is None:
                     pass
                 else:
-                    await ctx.author.send(":negative_squared_cross_mark: Ill-formatted value, Try Again.")
+                    await ctx.author.send(
+                        ":negative_squared_cross_mark: Ill-formatted value, Try Again."
+                    )
             else:
-                return await ctx.author.send(":negative_squared_cross_mark: Too many wrong values, Aborting.")
+                return await ctx.author.send(
+                    ":negative_squared_cross_mark: Too many wrong values, Aborting."
+                )
                 break
         if succ:
             async with self.config.user_from_id(ctx.author.id).primary() as conf:
@@ -262,7 +295,7 @@ class Matcher(commands.Cog):
                     conf[i] = j
 
         await ctx.author.send(
-            f":verifycyan: You have set your profile! , check it out using {ctx.prefix}profile."
+            f"<a:verifycyan:859079239538311198> You have set your profile! , check it out using {ctx.prefix}profile."
         )
 
     @commands.admin()
@@ -303,21 +336,23 @@ class Matcher(commands.Cog):
     @matchset.group(aliases=["1"])
     async def primary(self, ctx):
         """Edit primary settings of a person"""
-    
+
     @primary.command(name="edit")
-    async def primary_edit(self,ctx, person: discord.User, thing, *, change):
+    async def primary_edit(self, ctx, person: discord.User, thing, *, change):
         """Edit primary settings of a person"""
-        if value_get := getattr(self.config.user_from_id(person.id).primary,thing,None):
+        if value_get := getattr(self.config.user_from_id(person.id).primary, thing, None):
             value = await value_get()
-            if isinstance(value,list):
+            if isinstance(value, list):
                 await value_get.set([i.strip() for i in value.split(",")])
-                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}")
+                await ctx.send(
+                    f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}"
+                )
             else:
                 await value_get.set(change)
                 await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change}")
         else:
             await ctx.send("Value not found")
-    
+
     @matchset.group(aliases=["2"])
     async def secondary(self, ctx):
         """Edit secondary settings of a person"""
@@ -325,27 +360,29 @@ class Matcher(commands.Cog):
     @matchset.command(name="edit")
     async def secondary_edit(self, ctx, person: discord.User, thing, *, change):
         """Edit Secondary data of any person"""
-        if value_get := getattr(self.config.user_from_id(person.id).secondary,thing,None):
+        if value_get := getattr(self.config.user_from_id(person.id).secondary, thing, None):
             value = await value_get()
-            if isinstance(value,list):
+            if isinstance(value, list):
                 await value_get.set([i.strip() for i in value.split(",")])
-                await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}")
+                await ctx.send(
+                    f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change.split(',')}"
+                )
             else:
                 await value_get.set(change)
                 await ctx.send(f"Changed {thing} for {str(person)} \nfrom: {value}\nto: {change}")
         else:
             await ctx.send("Value not found")
-    
+
     @secondary.command(name="show")
-    async def secondary_show(self,ctx,person:discord.User):
+    async def secondary_show(self, ctx, person: discord.User):
         """Show the secondary keywords of the specified person"""
         details = await self.config.user_from_id(person.id).secondary.all()
         emb = discord.Embed(title=f"All secondary data from {person.name}")
         emb.set_thumbnail(url=person.avatar_url)
-        for i,j in details.items():
-            emb.add_field(name=i,value=box((", ".join(j)) or "Nothing here yet.."),inline=False)
+        for i, j in details.items():
+            emb.add_field(name=i, value=box((", ".join(j)) or "Nothing here yet.."), inline=False)
         await ctx.send(embed=emb)
-        
+
     async def get_timezone(self, ctx, x):
         if res := self.fuzzy_timezone_search(x):
             if len(res) == 1:
@@ -365,14 +402,14 @@ class Matcher(commands.Cog):
             )
             return None, False
 
-    def check_country(self,x):
+    def check_country(self, x):
         try:
             country = pycountry.countries.search_fuzzy(x)[0]
         except LookupError:
-            return None,False
-        if parsed := getattr(country,"official_name", None):
-            return parsed,True
-        return country.name,True
+            return None, False
+        if parsed := getattr(country, "official_name", None):
+            return parsed, True
+        return country.name, True
 
     # thanks aika/vex
     # https://github.com/aikaterna/aikaterna-cogs/blob/v3/timezone/timezone.py#L35
@@ -386,4 +423,3 @@ class Matcher(commands.Cog):
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
         # TODO: Replace this with the proper end user data removal handling.
         super().red_delete_data_for_user(requester=requester, user_id=user_id)
-
