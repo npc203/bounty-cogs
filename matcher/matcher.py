@@ -14,6 +14,7 @@ import yake
 import json
 from collections import defaultdict
 from discord.ext import tasks
+from redbot.core.utils import menus
 
 
 class Matcher(commands.Cog):
@@ -56,11 +57,72 @@ class Matcher(commands.Cog):
     def cog_unload(self):
         self.main_update_loop.cancel()
 
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
+    @commands.Cog.listener(name="on_reaction_add")
+    async def reaction_stuff(self, reaction: discord.Reaction, user: discord.User):
         if user.bot:
             return
-        pass
+        # print(reaction, flush=True)
+        # Matchmaking arrow thing
+        if (
+            reaction.message.id == 867010712663752714
+            and reaction.custom_emoji
+            and reaction.emoji.id == 823917870089764895
+        ):
+            await reaction.message.remove_reaction(reaction.emoji, user)
+            msg = await reaction.message.author.send(
+                "Welcome to matchmaking! Here's a short, comprehensive guide on how it works"
+            )
+            ctx = await self.bot.get_context(msg)
+            await self.startup_guide(ctx)
+
+    async def startup_guide(self, ctx):
+        tut = [
+            "This is your profile. Here you can see the primary modules that are displayed by other users when you match.\nhttp://prntscr.com/1cpsann",
+            "As you chat in the server, the bot will collect data about you.\n"
+            "These modules are secondary, and are not displayed to your matches.\n"
+            "The bot collects this data in order to narrow down what the closest match is to you.\n"
+            "It collects this data over time, so you have to continually talk in the server for the bot to get to know you.\nhttp://prntscr.com/1cpsqtc",
+            "The accuracy of matching and data accumulation increases over time.\nhttp://prntscr.com/1cptglk",
+            "You can erase your data using `.mydata forgetme`\nNote: If you leave the server without erasing your data, It WILL be saved until you erase it.",
+            "Use `.setup` to start setting up your basic profile details and to get started with matching",
+        ]
+        if not (test := self.bot.get_guild(858756375541448704).get_member(ctx.author.id)):
+            if not discord.utils.find(lambda m: m.id == 859147972000481320, test.roles):
+                return await ctx.send("You are not eligible for matchmaking")
+        else:
+            return await ctx.send("You are not eligible for matchmaking")
+
+        for ind, val in enumerate(tut, 1):
+            await ctx.send(f"**Page: {ind}/{len(tut)}**\n{val}")
+            for _ in range(3):
+                try:
+                    resp = await self.bot.wait_for(
+                        "message",
+                        check=lambda x: ctx.author == x.author and x.guild is None,
+                        timeout=300,
+                    )
+                except asyncio.TimeoutError:
+                    return
+
+                if "no" == resp.content.lower():
+                    return await ctx.send(
+                        "\U0000274e You have not completed your setup, react to the message in the server again to start"
+                    )
+                elif "yes" == resp.content.lower():
+                    break
+
+            else:
+                return await ctx.send("\U0000274e Too many un-needed responses, stopping")
+                break
+
+        await ctx.send(
+            f"<a:verifycyan:859079239538311198> You have read the guide successfully , continue with `.setup` to set up your profile"
+        )
+
+    @commands.command()
+    async def tutorial(self, ctx):
+        """Shows a basic tutorial on how to use the bot"""
+        await self.startup_guide(ctx)
 
     @tasks.loop(seconds=5)
     async def main_update_loop(self):
@@ -115,6 +177,7 @@ class Matcher(commands.Cog):
         # self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
         # del kw,fin
 
+    @commands.has_role(859147972000481320)
     @commands.command()
     async def profile(self, ctx):
         """See your profile"""
@@ -259,14 +322,10 @@ class Matcher(commands.Cog):
                         timeout=300,
                     )
                 except asyncio.TimeoutError:
-                    return await ctx.author.send(
-                        ":negative_squared_cross_mark: Timed out, try again later."
-                    )
+                    return await ctx.author.send("\U0000274e Timed out, try again later.")
 
                 if "cancel" == resp.content.lower():
-                    return await ctx.author.send(
-                        ":negative_squared_cross_mark: You have cancelled your setup."
-                    )
+                    return await ctx.author.send("\U0000274e You have cancelled your setup.")
 
                 # Parse le questions
                 if inspect.iscoroutinefunction(val[2]):
