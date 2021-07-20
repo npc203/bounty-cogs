@@ -418,7 +418,7 @@ class Matcher(commands.Cog):
                     conf[i] = j
                     if i == "age" and int(j) >= 13:
                         guild = self.bot.get_guild(858756375541448704)
-                        age = str(j) if int(j) >= 30 else "30+"
+                        age = str(j) if int(j) < 30 else "30+"
                         member = await self.bot.get_or_fetch_member(guild, ctx.author.id)
                         await member.add_roles(
                             [i for i in guild.roles if i.name == age][0], reason="Adding age"
