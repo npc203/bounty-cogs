@@ -33,6 +33,7 @@ class Matcher(commands.Cog):
         self.filter_kw = yake.KeywordExtractor(lan="en", n=3, dedupLim=0.9, features=None)
         self.main_update_loop.start()
         self.config.register_user(
+            seen_tut=False,
             primary={
                 "Age Verified": False,
                 "name": None,
@@ -85,10 +86,8 @@ class Matcher(commands.Cog):
             "It collects this data over time, so you have to continually talk in the server for the bot to get to know you.\nhttp://prntscr.com/1cpsqtc",
             "The accuracy of matching and data accumulation increases over time.\nhttp://prntscr.com/1cptglk",
             "You can erase your data using `.mydata forgetme`\nNote: If you leave the server without erasing your data, It WILL be saved until you erase it.",
-            "Use `.setup` to start setting up your basic profile details and to get started with matching",
         ]
         if test := self.bot.get_guild(858756375541448704).get_member(ctx.author.id):
-            print(*map(lambda x: x.name, test.roles))
             if not discord.utils.find(lambda m: m.id == 859147972000481320, test.roles):
                 return await ctx.send("You are not eligible for matchmaking!")
         else:
@@ -131,13 +130,33 @@ class Matcher(commands.Cog):
             reaction = resp[0].emoji
             if reaction == "\U0000274e":
                 return await ctx.send(
-                    "\U0000274e You have not completed your setup, react to the message in the server again to start."
+                    "\U0000274e You have not completed your setup, react to the message in the server again to start or use `.setup`."
                 )
+        await self.config.user_from_id(ctx.author.id).seen_tut.set(True)
+        await check_msg.delete()
+        check_msg = await ctx.send(
+            f"<a:verifycyan:859079239538311198> You have read the guide successfully.\n\nWould you like to set your profile up now?"
+        )
+        menus.start_adding_reactions(check_msg, ["\U00002705", "\U0000274e"])
+        try:
+            resp = await self.bot.wait_for(
+                "reaction_add",
+                check=lambda x, user: ctx.author.id == user.id
+                and x.message.id == check_msg.id
+                and x.emoji in ["\U0000274e", "\U00002705"],
+                timeout=300,
+            )
+        except asyncio.TimeoutError:
+            return
 
-        await ctx.send(
-            f"<a:verifycyan:859079239538311198> You have read the guide successfully , continue with `.setup` to set up your profile."
+        reaction = resp[0].emoji
+        if reaction == "\U00002705":
+            return await ctx.invoke(self.setup)
+        return await ctx.send(
+            "You can use the `.setup` to set your profile later, or re-run the tutorial"
         )
 
+    @commands.dm_only()
     @commands.command()
     async def tutorial(self, ctx):
         """Shows a basic tutorial on how to use the bot"""
@@ -159,7 +178,9 @@ class Matcher(commands.Cog):
         async with self.config.user_from_id(user.id).primary() as conf:
             if not conf["Age Verified"]:
                 conf["Age Verified"] = True
-                await ctx.send(f"Age is verified for {user.name}")
+                await ctx.send(
+                    f"{user.name} is age verified and are given the veification roles now"
+                )
                 await ctx.guild.get_member(user.id).add_roles(
                     ctx.guild.get_role(859147972000481320),
                     ctx.guild.get_role(859147973061509120),
@@ -201,18 +222,25 @@ class Matcher(commands.Cog):
         # self.cache[msg.author.id]["exp"].update([w for i in kw for w in self.search_words["exp"] if i.lower() in w])
         # del kw,fin
 
-    @commands.has_role(859147972000481320)
     @commands.command()
     async def profile(self, ctx):
         """See your profile"""
+        if test := self.bot.get_guild(858756375541448704).get_member(ctx.author.id):
+            if not discord.utils.find(lambda m: m.id == 859147972000481320, test.roles):
+                return await ctx.send("You are not eligible for matchmaking!")
+        else:
+            return await ctx.send("You are not eligible for matchmaking")
         data = await self.config.user_from_id(ctx.author.id).all()
-        if None in data.values():
-            await ctx.send("You need to setup a profile, set it using .setup")
+        if list(data["primary"].values()).count(None) > 2:
+            await ctx.send("You need to setup a profile, set it using `.setup`")
         else:
             await ctx.send(embed=await self.emb_profile(data, ctx))
 
     async def emb_profile(self, data, ctx):
-        emb = discord.Embed(title=f"{ctx.author}'s Profile", color=await ctx.embed_color())
+        emb = discord.Embed(
+            title=f"{ctx.author}'s Profile   {'<a:verifyblue:859079247359639602>' if data['primary'].pop('Age Verified') else ''}",
+            color=await ctx.embed_color(),
+        )
         pfp = data["primary"].pop("pfp")
         emb.set_thumbnail(url=pfp or ctx.author.avatar_url)
         for name, value in data["primary"].items():
@@ -327,6 +355,14 @@ class Matcher(commands.Cog):
                 (lambda x: (x.split(","), True)),
             ),
         ]
+
+        conf = self.config.user_from_id(ctx.author.id)
+        all_user_data = await conf.all()
+        if not all_user_data["seen_tut"]:
+            return await ctx.send(
+                "You haven't seen the tutorial, please do it now by typing `.tutorial` in the bot dms"
+            )
+
         try:
             await ctx.author.send(
                 f"Set up your profile by answering the following {len(q)} questions:\n You can always cancel anytime by typing `cancel`"
@@ -334,12 +370,15 @@ class Matcher(commands.Cog):
         except discord.Forbidden:
             return await ctx.send("I can't send messages to you")
 
-        conf = self.config.user_from_id(ctx.author.id)
         succ = []
         prev = None
         for ind, val in enumerate(q, 1):
             await ctx.author.send(
-                (f"Your answer was: {str(prev).capitalize()}" if prev else "")
+                (
+                    f"Your answer was: {', '.join(prev) if isinstance(prev,list) else str(prev)}"
+                    if prev
+                    else ""
+                )
                 + f"\n{ind}. {val[0]}"
             )
             for _ in range(3):
@@ -508,5 +547,4 @@ class Matcher(commands.Cog):
         return matches
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:
-        # TODO: Replace this with the proper end user data removal handling.
-        super().red_delete_data_for_user(requester=requester, user_id=user_id)
+        await self.config.user_from_id(user_id).clear()
