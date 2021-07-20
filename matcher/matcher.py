@@ -191,7 +191,7 @@ class Matcher(commands.Cog):
         for name, value in data["primary"].items():
             val = str(value).title() if type(value) is not list else ", ".join(value)
             if name == "age":
-                val = val if val < 30 else "30+"
+                val = val if int(val) < 30 else "30+"
             emb.add_field(
                 name=name.title(),
                 value=val or "Not set yet",
