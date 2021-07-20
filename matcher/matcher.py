@@ -206,7 +206,10 @@ class Matcher(commands.Cog):
     async def profile(self, ctx):
         """See your profile"""
         data = await self.config.user_from_id(ctx.author.id).all()
-        await ctx.send(embed=await self.emb_profile(data, ctx))
+        if None in data.values():
+            await ctx.send("You need to setup a profile, set it using .setup")
+        else:
+            await ctx.send(embed=await self.emb_profile(data, ctx))
 
     async def emb_profile(self, data, ctx):
         emb = discord.Embed(title=f"{ctx.author}'s Profile", color=await ctx.embed_color())
