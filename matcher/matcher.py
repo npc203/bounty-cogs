@@ -58,23 +58,16 @@ class Matcher(commands.Cog):
     def cog_unload(self):
         self.main_update_loop.cancel()
 
-    @commands.Cog.listener(name="on_reaction_add")
-    async def reaction_stuff(self, reaction: discord.Reaction, user: discord.User):
-        if user.bot:
-            return
-        # print(reaction, flush=True)
-        # Matchmaking arrow thing
-        if (
-            reaction.message.id == 867010712663752714
-            and reaction.custom_emoji
-            and reaction.emoji.id == 823917870089764895
-        ):
-            await reaction.message.remove_reaction(reaction.emoji, user)
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        if payload.message_id == 867010712663752714 and payload.emoji.id == 823917870089764895:
+            user = self.bot.get_user(payload.user_id)
+            # await reaction.message.remove_reaction(reaction.emoji, user)
             msg = await user.send(
                 "Welcome to matchmaking! Here's a short, comprehensive guide on how it works"
             )
             ctx = await self.bot.get_context(msg)
-            ctx.author = user
+            ctx.author = payload.member
             await self.startup_guide(ctx, msg)
 
     async def startup_guide(self, ctx, check_msg=None):
@@ -305,9 +298,13 @@ class Matcher(commands.Cog):
         # q[question,conf_attr,function(msg)->(value_to_write:str.check:bool)]
         q = [
             ("What is your name?", "name", (lambda x: (x, len(x) < 70))),
-            ("How old are you?", "age", (lambda x: (x, x.isdigit() and int(x) < 80))),
             (
-                "What is your gender? (pick from the options)\n1) Male\n2) Female\n3) Transgender\n4) Cisgender\n5) Nonbinary\n6) Other",
+                "How old are you?",
+                "age",
+                (lambda x: (x, x.isdigit() and int(x) < 80 and int(x) >= 13)),
+            ),
+            (
+                "What is your gender? (pick from the options)\n`  1) Male      \n  2) Female     \n  3) Transgender\n  4) Cisgender  \n  5) Nonbinary  \n  6) Other     `",
                 "gender",
                 (
                     lambda x: (
@@ -365,7 +362,7 @@ class Matcher(commands.Cog):
 
         try:
             await ctx.author.send(
-                f"Set up your profile by answering the following {len(q)} questions:\n You can always cancel anytime by typing `cancel`"
+                f"Set up your profile by answering the following **{len(q)}** questions:\n You can always cancel anytime by typing `cancel`"
             )
         except discord.Forbidden:
             return await ctx.send("I can't send messages to you")
@@ -419,6 +416,13 @@ class Matcher(commands.Cog):
             async with self.config.user_from_id(ctx.author.id).primary() as conf:
                 for i, j in succ:
                     conf[i] = j
+                    if i == "age" and int(j) >= 13:
+                        guild = self.bot.get_guild(858756375541448704)
+                        age = str(j) if int(j) >= 30 else "30+"
+                        member = await self.bot.get_or_fetch_member(guild, ctx.author.id)
+                        await member.add_roles(
+                            [i for i in guild.roles if i.name == age][0], reason="Adding age"
+                        )
 
         await ctx.author.send(
             f"<a:verifycyan:859079239538311198> You have set your profile! , check it out using {ctx.prefix}profile."
