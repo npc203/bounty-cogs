@@ -69,13 +69,14 @@ class Matcher(commands.Cog):
             and reaction.emoji.id == 823917870089764895
         ):
             await reaction.message.remove_reaction(reaction.emoji, user)
-            msg = await reaction.message.author.send(
+            msg = await user.send(
                 "Welcome to matchmaking! Here's a short, comprehensive guide on how it works"
             )
             ctx = await self.bot.get_context(msg)
-            await self.startup_guide(ctx)
+            ctx.author = user
+            await self.startup_guide(ctx, msg)
 
-    async def startup_guide(self, ctx):
+    async def startup_guide(self, ctx, check_msg=None):
         tut = [
             "This is your profile. Here you can see the primary modules that are displayed by other users when you match.\nhttp://prntscr.com/1cpsann",
             "As you chat in the server, the bot will collect data about you.\n"
@@ -86,37 +87,55 @@ class Matcher(commands.Cog):
             "You can erase your data using `.mydata forgetme`\nNote: If you leave the server without erasing your data, It WILL be saved until you erase it.",
             "Use `.setup` to start setting up your basic profile details and to get started with matching",
         ]
-        if not (test := self.bot.get_guild(858756375541448704).get_member(ctx.author.id)):
+        if test := self.bot.get_guild(858756375541448704).get_member(ctx.author.id):
+            print(*map(lambda x: x.name, test.roles))
             if not discord.utils.find(lambda m: m.id == 859147972000481320, test.roles):
-                return await ctx.send("You are not eligible for matchmaking")
+                return await ctx.send("You are not eligible for matchmaking!")
         else:
             return await ctx.send("You are not eligible for matchmaking")
 
+        check_msg = await ctx.send(
+            f"Welcome to matchmaking, Kindly read this guide and react with a tick mark to continue \n\n Please react below with a  \U00002705  to get started, or a  \U0000274e  if you are not ready."
+        )
+        await menus.start_adding_reactions(check_msg, ["\U00002705", "\U0000274e"])
+        try:
+            resp = await self.bot.wait_for(
+                "reaction_add",
+                check=lambda x, user: ctx.author.id == user.id
+                and x.message.id == check_msg.id
+                and x.emoji in ["\U0000274e", "\U00002705"],
+                timeout=300,
+            )
+        except asyncio.TimeoutError:
+            return
+
+        if resp[0].emoji == "\U0000274e":
+            return await ctx.send(
+                "\U0000274e You have not completed your setup, react to the message in the server again to start."
+            )
         for ind, val in enumerate(tut, 1):
-            await ctx.send(f"**Page: {ind}/{len(tut)}**\n{val}")
-            for _ in range(3):
-                try:
-                    resp = await self.bot.wait_for(
-                        "message",
-                        check=lambda x: ctx.author == x.author and x.guild is None,
-                        timeout=300,
-                    )
-                except asyncio.TimeoutError:
-                    return
+            await check_msg.edit(
+                content=f"**Page: {ind}/{len(tut)}**\n{val}\n\n React with \U00002705 to continue."
+            )
+            try:
+                resp = await self.bot.wait_for(
+                    "reaction_add",
+                    check=lambda x, user: ctx.author.id == user.id
+                    and x.message.id == check_msg.id
+                    and x.emoji in ["\U0000274e", "\U00002705"],
+                    timeout=300,
+                )
+            except asyncio.TimeoutError:
+                return
 
-                if "no" == resp.content.lower():
-                    return await ctx.send(
-                        "\U0000274e You have not completed your setup, react to the message in the server again to start"
-                    )
-                elif "yes" == resp.content.lower():
-                    break
-
-            else:
-                return await ctx.send("\U0000274e Too many un-needed responses, stopping")
-                break
+            reaction = resp[0].emoji
+            if reaction == "\U0000274e":
+                return await ctx.send(
+                    "\U0000274e You have not completed your setup, react to the message in the server again to start."
+                )
 
         await ctx.send(
-            f"<a:verifycyan:859079239538311198> You have read the guide successfully , continue with `.setup` to set up your profile"
+            f"<a:verifycyan:859079239538311198> You have read the guide successfully , continue with `.setup` to set up your profile."
         )
 
     @commands.command()
@@ -141,6 +160,11 @@ class Matcher(commands.Cog):
             if not conf["Age Verified"]:
                 conf["Age Verified"] = True
                 await ctx.send(f"Age is verified for {user.name}")
+                await ctx.guild.get_member(user.id).add_roles(
+                    ctx.guild.get_role(859147972000481320),
+                    ctx.guild.get_role(859147973061509120),
+                    reason="verification system",
+                )
             else:
                 await ctx.send("Already verified >_>")
 
@@ -159,15 +183,15 @@ class Matcher(commands.Cog):
             if len(i) <= 2:
                 continue
             for j in self.search_words["likes"]:
-                if i.lower() in j.split():
+                if i.lower() == j:
                     fin_likes.append(j)
                     break
             for j in self.search_words["exp"]:
-                if i.lower() in j.split():
+                if i.lower() == j:
                     fin_exp.append(j)
                     break
             for j in self.search_words["hobbies"]:
-                if i.lower() in j.split():
+                if i.lower() == j:
                     fin_hobbies.append(j)
                     break
 
@@ -312,7 +336,8 @@ class Matcher(commands.Cog):
         prev = None
         for ind, val in enumerate(q, 1):
             await ctx.author.send(
-                (f"Your answer was: {prev.capitalize()}" if prev else "") + f"\n{ind}. {val[0]}"
+                (f"Your answer was: {str(prev).capitalize()}" if prev else "")
+                + f"\n{ind}. {val[0]}"
             )
             for _ in range(3):
                 try:
