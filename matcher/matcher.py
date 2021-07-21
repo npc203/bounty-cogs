@@ -55,6 +55,11 @@ class Matcher(commands.Cog):
         with open(data_manager.bundled_data_path(self) / "all.json", "r", encoding="utf8") as f:
             self.search_words = json.load(f)
 
+        with open(
+            data_manager.bundled_data_path(self) / "primary.json", "r", encoding="utf8"
+        ) as f:
+            self.roles = json.load(f)
+
     def cog_unload(self):
         self.main_update_loop.cancel()
 
@@ -64,7 +69,7 @@ class Matcher(commands.Cog):
             user = self.bot.get_user(payload.user_id)
             # await reaction.message.remove_reaction(reaction.emoji, user)
             msg = await user.send(
-                "Welcome to matchmaking! Here's a short, comprehensive guide on how it works"
+                f"Welcome to matchmaking, Kindly read this guide and react with a tick mark to continue \n\n Please react below with a  \U00002705  to get started, or a  \U0000274e  if you are not ready."
             )
             ctx = await self.bot.get_context(msg)
             ctx.author = payload.member
@@ -85,10 +90,10 @@ class Matcher(commands.Cog):
                 return await ctx.send("You are not eligible for matchmaking!")
         else:
             return await ctx.send("You are not eligible for matchmaking")
-
-        check_msg = await ctx.send(
-            f"Welcome to matchmaking, Kindly read this guide and react with a tick mark to continue \n\n Please react below with a  \U00002705  to get started, or a  \U0000274e  if you are not ready."
-        )
+        if not check_msg:
+            check_msg = await ctx.send(
+                f"Welcome to matchmaking, Kindly read this guide and react with a tick mark to continue \n\n Please react below with a  \U00002705  to get started, or a  \U0000274e  if you are not ready."
+            )
         await menus.start_adding_reactions(check_msg, ["\U00002705", "\U0000274e"])
         try:
             resp = await self.bot.wait_for(
@@ -252,9 +257,7 @@ class Matcher(commands.Cog):
         x = await self.config.all_users()  # TODO remove DMs
         full_client = x.pop(ctx.author.id, None)
         if not full_client:
-            return await ctx.send(
-                f"You have not set a profile, kindly set it up using `{ctx.prefix}setup`"
-            )
+            return await ctx.send(f"You have not set a profile, kindly set it up using `.setup`")
 
         if full_client["token"] <= 0:
             return await ctx.send("You don't have any tokens! buy one from the shop")
@@ -425,7 +428,7 @@ class Matcher(commands.Cog):
                         )
 
         await ctx.author.send(
-            f"<a:verifycyan:859079239538311198> You have set your profile! , check it out using {ctx.prefix}profile."
+            f"<a:verifycyan:859079239538311198> You have set your profile! , check it out using .profile."
         )
 
     @commands.admin()
