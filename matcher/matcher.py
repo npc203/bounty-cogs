@@ -42,6 +42,7 @@ class Matcher(commands.Cog):
                 "timezone": None,
                 "location": None,  # Likely country
                 "marital status": None,
+                "language": None,
                 "job": [],
                 "hobby": [],
                 "education": None,  # No idea what the heck is this
@@ -53,7 +54,9 @@ class Matcher(commands.Cog):
         )
         self.cache = defaultdict(lambda: {"likes": set(), "exp": set(), "hobbies": set()})
         with open(data_manager.bundled_data_path(self) / "all.json", "r", encoding="utf8") as f:
-            self.search_words = json.load(f)
+            full = json.load(f)
+            self.search_words = full["search_words"]
+            self.verify_roles = full["verify_roles"]
 
         with open(
             data_manager.bundled_data_path(self) / "primary.json", "r", encoding="utf8"
@@ -350,6 +353,21 @@ class Matcher(commands.Cog):
                 (lambda x: (x.split(","), True)),
             ),
             (
+                "What is your educational status?",
+                "education",
+                (lambda x: (x, True)),
+            ),
+            (
+                "What is your mother tongue language?",
+                "language",
+                (lambda x: (x, x.isalnum())),
+            ),
+            (
+                "What is your job status?",
+                "status",
+                (lambda x: (x, x.isalnum())),
+            ),
+            (
                 "What's your job(s) (separated by comma if multiple)",
                 "job",
                 (lambda x: (x.split(","), True)),
@@ -363,69 +381,84 @@ class Matcher(commands.Cog):
                 "You haven't seen the tutorial, please do it now by typing `.tutorial` in the bot dms"
             )
 
+        pregen = {}
+        guild = self.bot.get_guild(858756375541448704)
+        member = await self.bot.get_or_fetch_member(guild, ctx.author.id)
+        if member:
+            for key, ids in self.roles.items():
+                if tmp := discord.utils.find(lambda x: x.id in ids, member.roles):
+                    pregen[key] = tmp.name
+        else:
+            return await ctx.send("Something went wrong, contact owner")
+
         try:
             await ctx.author.send(
-                f"Set up your profile by answering the following **{len(q)}** questions:\n You can always cancel anytime by typing `cancel`"
+                f"Set up your profile by answering the following **{len(q)-len(pregen)}** questions:\n You can always cancel anytime by typing `cancel`"
             )
         except discord.Forbidden:
             return await ctx.send("I can't send messages to you")
 
         succ = []
         prev = None
-        for ind, val in enumerate(q, 1):
-            await ctx.author.send(
-                (
-                    f"Your answer was: {', '.join(prev) if isinstance(prev,list) else str(prev)}"
-                    if prev
-                    else ""
-                )
-                + f"\n{ind}. {val[0]}"
-            )
-            for _ in range(3):
-                try:
-                    resp = await self.bot.wait_for(
-                        "message",
-                        check=lambda x: ctx.author == x.author and x.guild is None,
-                        timeout=300,
-                    )
-                except asyncio.TimeoutError:
-                    return await ctx.author.send("\U0000274e Timed out, try again later.")
-
-                if "cancel" == resp.content.lower():
-                    return await ctx.author.send("\U0000274e You have cancelled your setup.")
-
-                # Parse le questions
-                if inspect.iscoroutinefunction(val[2]):
-                    ans = await val[2](ctx, resp.content)
-                else:
-                    ans = val[2](resp.content)
-
-                if ans[1]:
-                    succ.append((val[1], ans[0]))
-                    prev = ans[0]
-                    break
-                elif ans[0] is None:
-                    pass
-                else:
-                    await ctx.author.send(
-                        ":negative_squared_cross_mark: Ill-formatted value, Try Again."
-                    )
+        ind = 1
+        for val in q:
+            if val[1] in pregen:
+                succ.append((val[1], pregen[val[1]]))
             else:
-                return await ctx.author.send(
-                    ":negative_squared_cross_mark: Too many wrong values, Aborting."
+                await ctx.author.send(
+                    (
+                        f"Your answer was: {', '.join(prev) if isinstance(prev,list) else str(prev)}"
+                        if prev
+                        else ""
+                    )
+                    + f"\n{ind}. {val[0]}"
                 )
-                break
+                for _ in range(3):
+                    try:
+                        resp = await self.bot.wait_for(
+                            "message",
+                            check=lambda x: ctx.author == x.author and x.guild is None,
+                            timeout=300,
+                        )
+                    except asyncio.TimeoutError:
+                        return await ctx.author.send("\U0000274e Timed out, try again later.")
+
+                    if "cancel" == resp.content.lower():
+                        return await ctx.author.send("\U0000274e You have cancelled your setup.")
+
+                    # Parse le questions
+                    if inspect.iscoroutinefunction(val[2]):
+                        ans = await val[2](ctx, resp.content)
+                    else:
+                        ans = val[2](resp.content)
+
+                    # Parse le answer
+                    if ans[1]:
+                        succ.append((val[1], ans[0]))
+                        prev = ans[0]
+                        break
+                    elif ans[0] is None:
+                        pass
+                    else:
+                        await ctx.author.send(
+                            ":negative_squared_cross_mark: Ill-formatted value, Try Again."
+                        )
+                else:
+                    return await ctx.author.send(
+                        ":negative_squared_cross_mark: Too many wrong values, Aborting."
+                    )
+                    break
+                ind += 1
+
         if succ:
             async with self.config.user_from_id(ctx.author.id).primary() as conf:
                 for i, j in succ:
                     conf[i] = j
                     if i == "age" and int(j) >= 13:
-                        guild = self.bot.get_guild(858756375541448704)
                         age = str(j) if int(j) < 30 else "30+"
-                        member = await self.bot.get_or_fetch_member(guild, ctx.author.id)
-                        await member.add_roles(
-                            [i for i in guild.roles if i.name == age][0], reason="Adding age"
-                        )
+                        role_to_add = [i for i in guild.roles if i.name == age][0]
+                        if not role_to_add in member.roles:
+                            await member.add_roles(role_to_add, reason="Adding age")
 
         await ctx.author.send(
             f"<a:verifycyan:859079239538311198> You have set your profile! , check it out using .profile."
