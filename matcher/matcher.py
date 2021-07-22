@@ -392,7 +392,7 @@ class Matcher(commands.Cog):
             return await ctx.send("Something went wrong, contact owner")
 
         # kekw
-        fake_msg = await ctx.send(
+        fake_msg = await ctx.author.send(
             "<a:loading:867510859357356092>  Please hold on while I fetch your information from the server."
         )
         await asyncio.sleep(2)
