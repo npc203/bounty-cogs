@@ -163,7 +163,7 @@ class Matcher(commands.Cog):
         """Shows a basic tutorial on how to use the bot"""
         await self.startup_guide(ctx)
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=60)
     async def main_update_loop(self):
         # HOTFIX, fix later
         for k, v in self.cache.copy().items():

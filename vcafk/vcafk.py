@@ -72,6 +72,10 @@ class VcAfk(commands.Cog):
         if not member:
             return
 
+        # Bot messed up and didn't track if user left VC
+        if not member.voice:
+            return
+
         # member magically became bot
         if member.bot:
             return
@@ -82,8 +86,8 @@ class VcAfk(commands.Cog):
         if discord.utils.find(lambda role: role.id in things["roles"], member.roles):
             return
 
-        # Channel was removed while being in active
-        if member.voice.channel.id not in things["channels"]:
+        # Channel was removed while being in active #We gotta check if "everything" is enabled here as well
+        if not things["everything"] and member.voice.channel.id not in things["channels"]:
             return
 
         if txt_channel := self.bot.get_channel(things["call_channel"]):
